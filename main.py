@@ -1,81 +1,64 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-import time
-import requests
+import thispersondoesnotexist
+import synthetic
+from openai import OpenAI
 import os
-from datetime import datetime
-import threading
-from queue import Queue
-from concurrent.futures import ThreadPoolExecutor
 
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium import webdriver 
-from selenium.webdriver.chrome.service import Service as ChromeService
+client = OpenAI()
+client.api_key = os.getenv("OPENAI_API_KEY")
 
-def download_single_face(thread_id, output_queue):
-    # Set up Chrome options
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
+def generate_synthetic_data(csv_file, num_samples=10):
+    # Get data patterns from synthetic.py
+    data_patterns = synthetic.read_csv(csv_file)
+    synthetic_data = {}
 
-    # Initialize the driver
-    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
-    
-    try:
-        # Navigate to the website
-        url = "https://thispersondoesnotexist.com/"
-        driver.get(url)
+    for column_name, (length, dtype, pattern, common_pattern) in data_patterns.items():
+        # Create a prompt based on the column characteristics
+        prompt = create_column_prompt(column_name, pattern, common_pattern, length, dtype)
         
-        # Wait for the image to load
-        time.sleep(5)
-        
-        # Find the image element and download
-        img_element = driver.find_element('xpath', '//img')
-        img_url = img_element.get_attribute('src')
-        img_data = requests.get(img_url).content
-        
-        # Create 'ai_faces' directory if it doesn't exist
-        if not os.path.exists('ai_faces'):
-            os.makedirs('ai_faces')
-        
-        # Save the image with timestamp and thread ID
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'ai_faces/ai_face_{timestamp}_thread{thread_id}.jpg'
-        
-        with open(filename, 'wb') as handler:
-            handler.write(img_data)
+        try:
+            # Call OpenAI API
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a data generation assistant. Generate data that matches the specified pattern."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=150
+            )
             
-        output_queue.put((thread_id, filename))
-        
-    except Exception as e:
-        print(f"Thread {thread_id}: An error occurred: {str(e)}")
-        output_queue.put((thread_id, None))
-        
-    finally:
-        driver.quit()
+            # Store the generated data
+            synthetic_data[column_name] = response.choices[0].message.content
+            
+        except Exception as e:
+            print(f"Error generating data for column {column_name}: {str(e)}")
+    
+    return synthetic_data
 
-def download_ai_face(num_images=1, max_threads=1):
-    output_queue = Queue()
+def create_column_prompt(column_name, pattern, common_pattern, length, dtype):
+    prompt = f"Generate {length} samples of data for a column named '{column_name}' with the following characteristics:\n"
+    prompt += f"- Data type: {dtype}\n"
+    prompt += f"- Pattern type: {pattern}\n"
     
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        # Submit tasks to the thread pool
-        futures = [executor.submit(download_single_face, i, output_queue) 
-                  for i in range(num_images)]
+    if common_pattern:
+        prompt += f"- Common pattern found in values: '{common_pattern}'\n"
     
-    # Collect and print results
-    successful_downloads = 0
-    for _ in range(num_images):
-        thread_id, filename = output_queue.get()
-        if filename:
-            print(f"Thread {thread_id}: Downloaded successfully: {filename}")
-            successful_downloads += 1
+    if pattern == "numeric":
+        prompt += "Generate numeric values that make sense for this column.\n"
+    elif pattern == "date":
+        prompt += "Generate dates in a consistent format.\n"
+    elif pattern == "categorical":
+        prompt += "Generate categorical values that would be reasonable for this column.\n"
+    elif pattern == "text":
+        prompt += "Generate text values that would be reasonable for this column.\n"
     
-    print(f"\nDownload complete. Successfully downloaded {successful_downloads}/{num_images} images.")
+    prompt += "Return the values as a comma-separated list."
+    
+    return prompt
 
 # Example usage
 if __name__ == "__main__":
-    # Download 5 images
-    download_ai_face(100, max_threads=1)
-
+    synthetic_data = generate_synthetic_data("synthetic.csv")
+    for column, generated_values in synthetic_data.items():
+        print(f"\nColumn: {column}")
+        print(f"Generated values: {generated_values}")
