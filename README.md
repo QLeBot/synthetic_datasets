@@ -10,13 +10,15 @@ Creating code to generate synthetic data based on previous data or patterns. Com
 
 ## tech stack
 
-Python
-Data Science libraries
-Selenium & BeautifulSoup for scraping data
+Python\
+Data Science libraries\
+Selenium & BeautifulSoup for scraping data\
 APIs if available
 
 ## Information sources
 
 [Can synthetic data unlock AI recursive self-improvement? — Mark Zuckerberg](https://youtu.be/9TU0XjJqpOg?si=p_4xC25g0I39mVFG)
+
 [What is Synthetic Data? No, It's Not "Fake" Data](https://youtu.be/HIusawrGBN4?si=sfdI0ebFGUDtCRwI)
+
 [Can you trust synthetic data?](https://youtu.be/QQtSa9ngqQk?si=MdX--ysvPzT7toEE)
