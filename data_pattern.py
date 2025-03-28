@@ -89,6 +89,6 @@ def data_pattern(values):
     
     return common if common else ""
 
-print(read_csv("example_data.csv"))
+print(read_csv("sample_data/example_data.csv"))
 
 
