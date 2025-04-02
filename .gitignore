@@ -1,4 +1,7 @@
 /sample_data
 /generated_data
 
+# all pyc files
+*.pyc
+
 .env.local

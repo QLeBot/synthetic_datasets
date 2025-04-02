@@ -1,6 +1,9 @@
 from openai import OpenAI
 import os
 import data_pattern
+from dotenv import load_dotenv
+
+load_dotenv('.env.local')
 
 client = OpenAI()
 client.api_key = os.getenv("OPENAI_API_KEY")
