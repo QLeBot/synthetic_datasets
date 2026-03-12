@@ -3,7 +3,6 @@ SQL Server Reader Module
 Handles reading data from SQL Server databases using SQLAlchemy
 """
 from sqlalchemy import create_engine, Engine
-from sqlalchemy.engine import URL
 import pandas as pd
 import os
 from dotenv import load_dotenv
@@ -20,7 +19,8 @@ def get_sql_server_engine(
     driver: str = "ODBC Driver 17 for SQL Server",
     trusted_connection: bool = False,
     encrypt: bool = True,
-    trust_server_certificate: bool = False
+    trust_server_certificate: bool = False,
+    timeout: int = 30
 ) -> Engine:
     """
     Create a SQLAlchemy engine for SQL Server
@@ -34,6 +34,7 @@ def get_sql_server_engine(
         trusted_connection (bool): Use Windows Authentication if True
         encrypt (bool): Use encryption for the connection (default: True)
         trust_server_certificate (bool): Trust server certificate without validation (default: False)
+        timeout (int): Connection timeout in seconds (default: 30)
     
     Returns:
         Engine: SQLAlchemy engine object
@@ -55,17 +56,36 @@ def get_sql_server_engine(
     # Check if we should use Windows Authentication
     use_trusted = trusted_connection or os.getenv("SQL_TRUSTED_CONNECTION", "False").lower() == "true"
     
-    # Build connection URL using SQLAlchemy's URL.create
+    # Build connection string matching the working pattern from sqlalchemy.py
+    # URL-encode the driver name (spaces become +)
+    driver_encoded = driver.replace(' ', '+')
+    
+    # Build query parameters (matching the working pattern)
+    query_params = []
+    query_params.append(f"driver={driver_encoded}")
+    query_params.append(f"timeout={timeout}")
+    query_params.append(f"connect_timeout={timeout}")
+    
+    # Add encryption and certificate trust parameters only if explicitly set
+    # (matching the pattern where these are optional)
+    if not use_trusted:
+        # Only add Encrypt if explicitly disabled (default behavior may vary)
+        if not encrypt:
+            query_params.append("Encrypt=no")
+        
+        # Add TrustServerCertificate if explicitly requested (needed for self-signed certs)
+        if trust_server_certificate:
+            query_params.append("TrustServerCertificate=yes")
+    
+    query_string = "&".join(query_params)
+    
+    # Build connection string
     if use_trusted:
         # Windows Authentication
-        connection_url = URL.create(
-            "mssql+pyodbc",
-            host=server,
-            database=database,
-            query={
-                "driver": driver,
-                "Trusted_Connection": "yes"
-            }
+        conn_str = (
+            f"mssql+pyodbc://{server}/{database}"
+            f"?{query_string}"
+            f"&Trusted_Connection=yes"
         )
     else:
         if not username or not password:
@@ -73,29 +93,22 @@ def get_sql_server_engine(
                            "Provide them as parameters or set SQL_USER/SQL_USERNAME and SQL_PASSWORD environment variables. "
                            "Alternatively, set SQL_TRUSTED_CONNECTION=True to use Windows Authentication.")
         
-        # SQL Authentication with encryption options
-        query_params = {
-            "driver": driver,
-            "Encrypt": "yes" if encrypt else "no",
-            "TrustServerCertificate": "yes" if trust_server_certificate else "no"
-        }
-        
-        connection_url = URL.create(
-            "mssql+pyodbc",
-            username=username,
-            password=password,
-            host=server,
-            database=database,
-            query=query_params
+        # SQL Authentication
+        conn_str = (
+            f"mssql+pyodbc://{username}:{password}"
+            f"@{server}/{database}"
+            f"?{query_string}"
         )
     
-    # Create engine with connection pooling
+    # Create engine with connection pooling (matching working pattern)
     try:
         engine = create_engine(
-            connection_url,
-            pool_pre_ping=True,  # Verify connections before using
+            conn_str,
+            pool_pre_ping=True,  # Verify connections before using them
+            pool_recycle=3600,   # Recycle connections after 1 hour
             connect_args={
-                "timeout": 30
+                'timeout': timeout,
+                'connect_timeout': timeout,
             }
         )
         return engine
@@ -106,12 +119,16 @@ def get_sql_server_engine(
         if username:
             debug_info += f", Username: {username}"
         
+        # Show connection string without password
+        debug_conn_str = conn_str.replace(f":{password}@", ":***@") if password else conn_str
+        
         if "Login failed" in error_msg or "authentication" in error_msg.lower():
             if use_trusted:
                 raise Exception(
                     f"Failed to connect to SQL Server using Windows Authentication.\n"
                     f"Error: {error_msg}\n"
                     f"{debug_info}\n"
+                    f"Connection string: {debug_conn_str}\n"
                     f"Tip: Your Windows account may not have access. Try SQL authentication with --username and --password."
                 )
             else:
@@ -119,17 +136,19 @@ def get_sql_server_engine(
                     f"Failed to connect to SQL Server using SQL Authentication.\n"
                     f"Error: {error_msg}\n"
                     f"{debug_info}\n"
-                    f"Tip: Verify credentials. If encryption is required, ensure TrustServerCertificate is set correctly."
+                    f"Connection string: {debug_conn_str}\n"
+                    f"Tip: Verify credentials."
                 )
-        elif "certificate" in error_msg.lower() or "encrypt" in error_msg.lower():
+        elif "certificate" in error_msg.lower() or "ssl" in error_msg.lower() or "certificat" in error_msg.lower():
             raise Exception(
-                f"Connection encryption error.\n"
+                f"Connection SSL/certificate error.\n"
                 f"Error: {error_msg}\n"
                 f"{debug_info}\n"
-                f"Tip: Try setting --no-encrypt or --trust-cert if using self-signed certificates."
+                f"Connection string: {debug_conn_str}\n"
+                f"Tip: Try using --trust-cert flag to trust the server certificate."
             )
         else:
-            raise Exception(f"Failed to create SQL Server connection: {error_msg}\n{debug_info}")
+            raise Exception(f"Failed to create SQL Server connection: {error_msg}\n{debug_info}\nConnection string: {debug_conn_str}")
 
 
 def read_table(

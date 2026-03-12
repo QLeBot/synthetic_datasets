@@ -113,7 +113,8 @@ def _generate_numeric_values(pattern_info: Dict[str, Any], num_samples: int) -> 
     else:
         values = [float(v) for v in values]
     
-    return values.tolist()
+    # values is already a list, so just return it
+    return values
 
 
 def _generate_date_values(pattern_info: Dict[str, Any], num_samples: int) -> list:
@@ -162,7 +163,13 @@ def _generate_categorical_values(pattern_info: Dict[str, Any], num_samples: int)
     # Generate values based on probability distribution
     generated = np.random.choice(values, size=num_samples, p=probabilities)
     
-    return generated.tolist()
+    # Convert numpy array to list
+    if isinstance(generated, np.ndarray):
+        return generated.tolist()
+    elif isinstance(generated, list):
+        return generated
+    else:
+        return list(generated)
 
 
 def _generate_text_values(

@@ -114,8 +114,15 @@ def generate_synthetic_dataset_from_sql(
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
     
     if output_path.lower().endswith('.parquet'):
-        synthetic_data.to_parquet(output_path, index=False, engine='pyarrow')
-        print(f"  ✓ Synthetic data saved to: {output_path} (Parquet format)")
+        try:
+            synthetic_data.to_parquet(output_path, index=False, engine='pyarrow')
+            print(f"  ✓ Synthetic data saved to: {output_path} (Parquet format)")
+        except ImportError:
+            print(f"  ✗ Error: pyarrow is required for Parquet format. Install it with: pip install pyarrow")
+            print(f"  Saving as CSV instead...")
+            csv_path = output_path.rsplit('.', 1)[0] + '.csv'
+            synthetic_data.to_csv(csv_path, index=False)
+            print(f"  ✓ Synthetic data saved to: {csv_path} (CSV format)")
     else:
         # Default to CSV if extension not specified or not parquet
         if not output_path.lower().endswith('.csv'):

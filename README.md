@@ -114,6 +114,14 @@ patterns = analyze_dataframe_patterns(source_data)
 synthetic_data = generate_synthetic_data(source_data, num_samples=1000, patterns=patterns)
 ```
 
+## Visualize generated coordinates (Streamlit)
+
+If you're using the coordinate generator in `src/coords_generator.py`, you can visualize points on an interactive map with Streamlit:
+
+```bash
+streamlit run streamlit_app.py
+```
+
 ## How It Works
 
 ### 1. Data Reading

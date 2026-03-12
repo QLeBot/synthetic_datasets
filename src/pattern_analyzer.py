@@ -5,9 +5,14 @@ Analyzes data patterns including statistical measures (min, max, avg, mean) and 
 import pandas as pd
 import numpy as np
 import json
+import warnings
 from typing import Dict, Tuple, Any, Optional
 from collections import Counter
 import os
+
+# Suppress pandas date parsing warnings globally
+warnings.filterwarnings('ignore', category=UserWarning, message='.*Could not infer format.*')
+warnings.filterwarnings('ignore', category=FutureWarning, message='.*Parsed string.*timezone.*')
 
 
 def analyze_column_patterns(df: pd.DataFrame, column: str) -> Dict[str, Any]:
@@ -90,7 +95,11 @@ def analyze_column_patterns(df: pd.DataFrame, column: str) -> Dict[str, Any]:
     
     # Date pattern analysis
     elif pattern_type == 'date':
-        date_series = pd.to_datetime(series, errors='coerce').dropna()
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            warnings.simplefilter('ignore', FutureWarning)
+            date_series = pd.to_datetime(series, errors='coerce', format='mixed').dropna()
         if len(date_series) > 0:
             pattern_info['stats'] = {
                 'min_date': str(date_series.min()),
@@ -132,8 +141,12 @@ def _determine_pattern_type(series: pd.Series) -> str:
     if numeric_series.notna().sum() / len(series) > 0.8:  # 80% numeric
         return 'numeric'
     
-    # Check for date pattern
-    date_series = pd.to_datetime(series, errors='coerce')
+    # Check for date pattern (suppress warnings for format inference)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        warnings.simplefilter('ignore', FutureWarning)
+        date_series = pd.to_datetime(series, errors='coerce', format='mixed')
     if date_series.notna().sum() / len(series) > 0.8:  # 80% dates
         return 'date'
     
@@ -254,6 +267,8 @@ def save_patterns_to_file(
             elif isinstance(obj, (np.floating, np.float64, np.float32)):
                 return float(obj)
             elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, (pd.Series, pd.Index)):
                 return obj.tolist()
             elif isinstance(obj, dict):
                 return {key: convert_to_serializable(value) for key, value in obj.items()}
